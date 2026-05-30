@@ -1,7 +1,7 @@
 #import "Overlay.h"
 static float sw,sh;
-static CGPoint World2Screen(float x,float y,float z,float mat[16])
-{
+
+static CGPoint World2Screen(float x,float y,float z,float mat[16]){
     float vx=mat[0]*x+mat[1]*y+mat[2]*z+mat[3];
     float vy=mat[4]*x+mat[5]*y+mat[6]*z+mat[7];
     float vz=mat[8]*x+mat[9]*y+mat[10]*z+mat[11];
@@ -18,54 +18,107 @@ static CGPoint World2Screen(float x,float y,float z,float mat[16])
 @interface PubgOverlay()
 @property UIView *root;
 @end
+
 @implementation PubgOverlay
 -(instancetype)init{
     self=[super init];
     sw=[UIScreen mainScreen].bounds.size.width;
     sh=[UIScreen mainScreen].bounds.size.height;
     self.frame=[UIScreen mainScreen].bounds;
-    self.windowLevel=999999;
+    self.windowLevel=UIWindowLevelAlert+10;
     self.backgroundColor=UIColor.clearColor;
-    self.root=[UIView new];
-    self.root.frame=self.bounds;
+    self.root=[[UIView alloc]initWithFrame:self.bounds];
     self.root.backgroundColor=UIColor.clearColor;
     [self addSubview:self.root];
     return self;
 }
--(void)renderSkeleton:(Skeleton)sk mat:(float*)m
-{
+
+-(void)renderEnemies:(Enemy*)enemies count:(int)cnt matrix:(float*)m{
     dispatch_async(dispatch_get_main_queue(),^{
         [self.root.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
-        CGPoint h=World2Screen(sk.head.x,sk.head.y,sk.head.z,m);
-        CGPoint t=World2Screen(sk.torso.x,sk.torso.y,sk.torso.z,m);
-        CGPoint lh=World2Screen(sk.lhand.x,sk.lhand.y,sk.lhand.z,m);
-        CGPoint rh=World2Screen(sk.rhand.x,sk.rhand.y,sk.rhand.z,m);
-        CGPoint lf=World2Screen(sk.lfoot.x,sk.lfoot.y,sk.lfoot.z,m);
-        CGPoint rf=World2Screen(sk.rfoot.x,sk.rfoot.y,sk.rfoot.z,m);
-        if(h.x<0||t.x<0)return;
-        UIBezierPath*path=[UIBezierPath bezierPath];
-        path.lineWidth=2;
-        [path moveToPoint:h];[path addLineToPoint:t];
-        [path moveToPoint:t];[path addLineToPoint:lh];
-        [path moveToPoint:t];[path addLineToPoint:rh];
-        [path moveToPoint:t];[path addLineToPoint:lf];
-        [path moveToPoint:t];[path addLineToPoint:rf];
-        CAShapeLayer*line=[CAShapeLayer layer];
-        line.path=path.CGPath;
-        line.strokeColor=UIColor.whiteColor.CGColor;
-        line.fillColor=nil;
-        [self.root.layer addSublayer:line];
-        void(^dot)(CGPoint)=^(CGPoint p){
-            if(p.x<0)return;
-            UIView*d=[UIView new];
-            d.frame=CGRectMake(p.x-4,p.y-4,8,8);
-            d.backgroundColor=UIColor.redColor;
-            d.layer.cornerRadius=4;
-            [self.root addSubview:d];
-        };
-        dot(h);dot(t);dot(lh);dot(rh);dot(lf);dot(rf);
+        [self.root.layer.sublayers makeObjectsPerformSelector:@selector(removeFromSuperlayer)];
+        
+        for(int i=0;i<cnt;i++){
+            Enemy e=enemies[i];
+            
+            CGPoint h=World2Screen(e.sk.head.x,e.sk.head.y,e.sk.head.z,m);
+            CGPoint t=World2Screen(e.sk.torso.x,e.sk.torso.y,e.sk.torso.z,m);
+            CGPoint lh=World2Screen(e.sk.lhand.x,e.sk.lhand.y,e.sk.lhand.z,m);
+            CGPoint rh=World2Screen(e.sk.rhand.x,e.sk.rhand.y,e.sk.rhand.z,m);
+            CGPoint lf=World2Screen(e.sk.lfoot.x,e.sk.lfoot.y,e.sk.lfoot.z,m);
+            CGPoint rf=World2Screen(e.sk.rfoot.x,e.sk.rfoot.y,e.sk.rfoot.z,m);
+            
+            if(h.x<0||t.x<0)continue;
+            
+            // 颜色区分：可见=红色，隔墙=绿色
+            UIColor *mainColor = e.is_visible ? [UIColor redColor] : [UIColor greenColor];
+            
+            // 绘制敌人方框
+            float boxHeight=fabs(h.y-t.y)*2.5;
+            float boxWidth=boxHeight*0.6;
+            CGRect boxRect=CGRectMake(t.x-boxWidth/2, t.y-boxHeight/2, boxWidth, boxHeight);
+            
+            UIBezierPath*boxPath=[UIBezierPath bezierPathWithRect:boxRect];
+            boxPath.lineWidth=1.5;
+            CAShapeLayer*boxLayer=[CAShapeLayer layer];
+            boxLayer.path=boxPath.CGPath;
+            boxLayer.strokeColor=mainColor.CGColor;
+            boxLayer.fillColor=nil;
+            [self.root.layer addSublayer:boxLayer];
+            
+            // 绘制骨骼
+            UIBezierPath*bonePath=[UIBezierPath bezierPath];
+            bonePath.lineWidth=1.8 + (arc4random()%10)/10.0;
+            [bonePath moveToPoint:h];[bonePath addLineToPoint:t];
+            [bonePath moveToPoint:t];[bonePath addLineToPoint:lh];
+            [bonePath moveToPoint:t];[bonePath addLineToPoint:rh];
+            [bonePath moveToPoint:t];[bonePath addLineToPoint:lf];
+            [bonePath moveToPoint:t];[bonePath addLineToPoint:rf];
+            
+            CAShapeLayer*boneLayer=[CAShapeLayer layer];
+            boneLayer.path=bonePath.CGPath;
+            boneLayer.strokeColor=mainColor.CGColor;
+            boneLayer.fillColor=nil;
+            [self.root.layer addSublayer:boneLayer];
+            
+            // 绘制关节点
+            void(^dot)(CGPoint)=^(CGPoint p){
+                if(p.x<0)return;
+                UIView*d=[[UIView alloc]initWithFrame:CGRectMake(p.x-4,p.y-4,8,8)];
+                d.backgroundColor=mainColor;
+                d.layer.cornerRadius=4;
+                [self.root addSubview:d];
+            };
+            dot(h);dot(t);dot(lh);dot(rh);dot(lf);dot(rf);
+            
+            // 绘制血量条
+            float hpPercent=e.hp/e.maxhp;
+            CGRect hpBgRect=CGRectMake(boxRect.origin.x-2, boxRect.origin.y-8, boxRect.size.width+4, 4);
+            UIBezierPath*hpBgPath=[UIBezierPath bezierPathWithRect:hpBgRect];
+            CAShapeLayer*hpBgLayer=[CAShapeLayer layer];
+            hpBgLayer.path=hpBgPath.CGPath;
+            hpBgLayer.fillColor=UIColor.grayColor.CGColor;
+            [self.root.layer addSublayer:hpBgLayer];
+            
+            CGRect hpRect=CGRectMake(boxRect.origin.x-2, boxRect.origin.y-8, (boxRect.size.width+4)*hpPercent, 4);
+            UIBezierPath*hpPath=[UIBezierPath bezierPathWithRect:hpRect];
+            CAShapeLayer*hpLayer=[CAShapeLayer layer];
+            hpLayer.path=hpPath.CGPath;
+            hpLayer.fillColor=hpPercent>0.5?UIColor.greenColor.CGColor:UIColor.redColor.CGColor;
+            [self.root.layer addSublayer:hpLayer];
+            
+            // 绘制距离文字
+            NSString*distStr=[NSString stringWithFormat:@"%.1fm",e.distance/100];
+            UILabel*distLabel=[[UILabel alloc]initWithFrame:CGRectMake(boxRect.origin.x, boxRect.origin.y+boxRect.size.height+2, 60, 14)];
+            distLabel.text=distStr;
+            distLabel.textColor=UIColor.whiteColor;
+            distLabel.font=[UIFont systemFontOfSize:12];
+            distLabel.backgroundColor=UIColor.clearColor;
+            [self.root addSubview:distLabel];
+        }
     });
 }
+
 -(void)clearAll{
     [self.root.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
     [self.root.layer.sublayers makeObjectsPerformSelector:@selector(removeFromSuperlayer)];
